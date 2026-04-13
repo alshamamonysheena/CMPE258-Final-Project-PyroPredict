@@ -1,0 +1,43 @@
+# Data & model artifacts (large files)
+/data/
+models/
+runs/
+*.pt
+*.onnx
+*.engine
+*.tflite
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+*.egg
+.eggs/
+
+# Virtual environments
+venv/
+.env
+env/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Weights & Biases
+wandb/
+
+# Secrets
+*.key
+credentials.json
+CMPE258 Lecture2 0127.pdf
+notebooks/01_eda.ipynb
