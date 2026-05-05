@@ -14,8 +14,6 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
-
 import cv2
 import numpy as np
 
@@ -42,7 +40,7 @@ class InferenceResult:
     image_hw: tuple[int, int] = (0, 0)
 
 
-CLASS_NAMES = {0: "fire", 1: "smoke"}
+PROJECT_CLASS_NAMES = {0: "fire", 1: "smoke"}
 
 
 # ── Ultralytics .pt backend ────────────────────────────────────────────────
@@ -56,6 +54,7 @@ class YOLOPTEngine:
         self.device = device
         self.weights_path = Path(weights_path)
         self.model_name = self.weights_path.stem
+        self.class_names = getattr(self.model, "names", PROJECT_CLASS_NAMES)
 
     def predict(
         self,
@@ -87,7 +86,7 @@ class YOLOPTEngine:
                     x2=float(xyxy[2]), y2=float(xyxy[3]),
                     confidence=conf_val,
                     class_id=cls_id,
-                    class_name=CLASS_NAMES.get(cls_id, str(cls_id)),
+                    class_name=_class_name(self.class_names, cls_id),
                 ))
 
         return InferenceResult(
@@ -181,7 +180,7 @@ class YOLOOnnxEngine:
                 x2=float(x2), y2=float(y2),
                 confidence=max_score,
                 class_id=cls_id,
-                class_name=CLASS_NAMES.get(cls_id, str(cls_id)),
+                class_name=_class_name(PROJECT_CLASS_NAMES, cls_id),
             ))
 
         # NMS
@@ -244,6 +243,15 @@ def _iou(a: Detection, b: Detection) -> float:
     area_a = (a.x2 - a.x1) * (a.y2 - a.y1)
     area_b = (b.x2 - b.x1) * (b.y2 - b.y1)
     return inter / (area_a + area_b - inter + 1e-8)
+
+
+def _class_name(names, cls_id: int) -> str:
+    """Return a class label from Ultralytics metadata or project defaults."""
+    if isinstance(names, dict):
+        return str(names.get(cls_id, cls_id))
+    if isinstance(names, (list, tuple)) and 0 <= cls_id < len(names):
+        return str(names[cls_id])
+    return str(cls_id)
 
 
 # ── Factory ────────────────────────────────────────────────────────────────

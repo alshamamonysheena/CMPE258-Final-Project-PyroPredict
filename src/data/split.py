@@ -226,7 +226,7 @@ def generate_dataset_yaml(
 ) -> Path:
     """Write a YOLO-compatible dataset.yaml next to the split directories."""
     if class_names is None:
-        class_names = {0: "smoke"}
+        class_names = {0: "fire", 1: "smoke"}
 
     cfg = {
         "path": str(dest.resolve()),
@@ -270,7 +270,7 @@ def main() -> None:
     p.add_argument("--event-map", type=str, default=None,
                     help="JSON file mapping filename stems → event IDs")
     p.add_argument("--class-names", type=str, default=None,
-                    help='JSON string, e.g. \'{"0":"smoke","1":"fire"}\'')
+                    help='JSON string, e.g. \'{"0":"fire","1":"smoke"}\'')
     p.add_argument("--seed", type=int, default=42)
     args = p.parse_args()
 

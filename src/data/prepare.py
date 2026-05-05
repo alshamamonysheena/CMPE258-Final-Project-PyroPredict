@@ -25,9 +25,8 @@ from tqdm import tqdm
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
-# Default class mapping – smoke is the primary target; fire kept for
-# multi-class experiments if desired.
-DEFAULT_CLASS_MAP = {"smoke": 0, "fire": 1}
+# Default D-Fire mapping used by the training and demo notebooks.
+DEFAULT_CLASS_MAP = {"fire": 0, "smoke": 1}
 
 
 # ── VOC → YOLO conversion ──────────────────────────────────────────────────

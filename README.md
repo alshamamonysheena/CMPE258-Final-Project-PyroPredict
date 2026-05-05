@@ -1,5 +1,8 @@
 # PyroPredict — Real-Time Wildfire Smoke Localisation
 
+[![Open EDA In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/alshamamonysheena/CMPE258-Final-Project-PyroPredict/blob/main/notebooks/01_data_and_eda.ipynb)
+[![Open Training In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/alshamamonysheena/CMPE258-Final-Project-PyroPredict/blob/main/notebooks/02_train_baselines.ipynb)
+
 **CMPE 258 Deep Learning Final Project** | Spring 2026 | San Jose State University
 
 ---
@@ -76,7 +79,7 @@ bounding-box visualisation, and live inference metrics. Dockerised for reproduci
 │   ├── 02_train_baselines.ipynb  YOLO11/26 baseline training (Colab, GPU)
 │   ├── 03_ablations.ipynb        Augmentation ablation experiments (upcoming)
 │   └── 04_quantize.ipynb         ONNX export & INT8 benchmarking (upcoming)
-├── app/                Streamlit demo (upcoming)
+├── app/                Streamlit demo application
 ├── docker/             Dockerfile & compose (upcoming)
 ├── data/               Downloaded & processed data (git-ignored)
 ├── models/             Saved weights & ONNX files (git-ignored)
@@ -94,34 +97,56 @@ bounding-box visualisation, and live inference metrics. Dockerised for reproduci
 - [x] EDA notebook: dataset statistics, sample visualisation, class/box distributions
 - [x] Successfully ran EDA on D-Fire (14,122 train / 3,099 val / 4,306 test images)
 - [x] Baseline training notebook for YOLO11m and YOLO26m (ready to execute)
+- [x] Streamlit demo app with upload/sample image flow, model selector, annotations, and inference metrics
 
 ### In Progress
 - [ ] Train YOLO11m and YOLO26m baselines on D-Fire (Colab GPU)
 - [ ] Baseline evaluation on test set (mAP, precision, recall, F1)
+- [ ] Copy trained weights into local `models/` for the live demo
 
 ### Next Steps
 - [ ] Phase 4: Augmentation ablation experiments (domain augmentations, hard negatives, training recipe)
 - [ ] Phase 5: ONNX export + INT8 quantisation + efficiency benchmarking
-- [ ] Phase 6: Streamlit demo application with model comparison toggle
+- [ ] Phase 6: Streamlit demo polish, screenshots, and demo rehearsal
 - [ ] Phase 7: Dockerised deployment artifact
 - [ ] Final report and presentation
 
 ## How to Run
 
-```bash
-# Clone and install
-git clone <repo-url> && cd <repo>
-python -m venv venv && source venv/bin/activate
+### 1. Colab data and training
+
+Use Colab for anything that needs the D-Fire dataset or GPU training:
+
+- [Open the EDA notebook in Colab](https://colab.research.google.com/github/alshamamonysheena/CMPE258-Final-Project-PyroPredict/blob/main/notebooks/01_data_and_eda.ipynb)
+- [Open the training notebook in Colab](https://colab.research.google.com/github/alshamamonysheena/CMPE258-Final-Project-PyroPredict/blob/main/notebooks/02_train_baselines.ipynb)
+
+In Colab, choose `Runtime -> Change runtime type -> T4 GPU` or any available GPU. Keep the training notebook's default `RUN_MODE = 'smoke'` for the first 2-epoch validation run, then switch to `RUN_MODE = 'full'` for the real YOLO11m run. Set `TRAIN_SECOND_MODEL = True` only after YOLO11m finishes and there is time left.
+
+### 2. Local Streamlit demo
+
+After Colab saves outputs to Google Drive, copy only the small demo artifacts back locally:
+
+```powershell
+python -m venv venv
+.\venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 
-# EDA (run in Google Colab — needs free Kaggle account)
-# Upload notebooks/01_data_and_eda.ipynb to Colab → Run All
+mkdir models
+mkdir data\samples
 
-# Training (run in Google Colab — needs GPU runtime)
-# Upload notebooks/02_train_baselines.ipynb to Colab → Run All
+# Copy from Google Drive manually:
+# MyDrive/PyroPredict/runs/yolo11m_baseline/weights/best.pt -> models/yolo11m_baseline.pt
+# MyDrive/PyroPredict/exports/yolo11m_baseline.onnx -> models/yolo11m_baseline.onnx
+# 5-10 demo images -> data/samples/
+
+streamlit run app/app.py
 ```
 
+Large files under `data/`, `models/`, `runs/`, `*.pt`, and `*.onnx` are intentionally git-ignored.
+
 ## References
+
+For the current 48-hour demo workflow, see [DEMO_RUNBOOK.md](DEMO_RUNBOOK.md).
 
 - D-Fire Dataset: [github.com/gaiasd/DFireDataset](https://github.com/gaiasd/DFireDataset)
 - HPWREN FIgLib: [hpwren.ucsd.edu/FIgLib](https://www.hpwren.ucsd.edu/FIgLib/)

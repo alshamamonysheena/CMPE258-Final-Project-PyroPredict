@@ -19,8 +19,8 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from app.inference import load_engine, InferenceResult, CLASS_NAMES
-from app.ui_utils import draw_detections, summary_markdown, format_size
+from app.inference import load_engine, InferenceResult
+from app.ui_utils import draw_detections, summary_markdown
 
 # ── Page config ─────────────────────────────────────────────────────────────
 
@@ -73,14 +73,17 @@ def render_sidebar():
     if not models:
         st.sidebar.warning(
             "No models found in `models/` directory.  \n"
-            "Place `.pt` or `.onnx` weight files there, or use the "
-            "demo mode below with a pre-trained YOLO model."
+            "After Colab training, place `best.pt` or exported `.onnx` files "
+            "there. Until then, use the generic pre-trained YOLO demo mode."
         )
         use_pretrained = st.sidebar.checkbox(
             "Use pre-trained YOLO11n (demo mode)", value=True
         )
         if use_pretrained:
             models = {"yolo11n (demo)": "yolo11n.pt"}
+            st.sidebar.caption(
+                "Demo mode uses COCO labels, not wildfire-specific classes."
+            )
     else:
         use_pretrained = False
 
@@ -177,7 +180,7 @@ def render_main(models, selected, conf, iou, compare_mode):
         image_bgr = cv2.imread(str(sample_path))
 
     if image_bgr is None:
-        st.info("👆 Upload an image or select a sample to get started.")
+        st.info("Upload an image or select a sample to get started.")
         return
 
     # Run inference

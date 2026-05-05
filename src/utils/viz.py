@@ -19,8 +19,8 @@ IMG_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff", ".webp"}
 # ── Colour palette ──────────────────────────────────────────────────────────
 
 CLASS_COLORS = {
-    0: (0.93, 0.35, 0.18),   # smoke – warm red-orange
-    1: (1.00, 0.60, 0.00),   # fire  – orange
+    0: (0.93, 0.35, 0.18),   # fire – warm red-orange
+    1: (1.00, 0.60, 0.00),   # smoke – orange
 }
 DEFAULT_COLOR = (0.30, 0.69, 0.87)  # sky blue fallback
 
