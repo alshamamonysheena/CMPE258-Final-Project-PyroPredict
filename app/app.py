@@ -33,10 +33,10 @@ st.set_page_config(
     layout="wide",
 )
 
-CLASS_NAMES = {0: "fire", 1: "smoke"}
+CLASS_NAMES = {0: "smoke", 1: "fire"}
 CLASS_COLORS_BGR = {
-    0: (40, 90, 235),    # fire  — red/orange
-    1: (0, 155, 255),    # smoke — amber
+    0: (0, 155, 255),    # smoke — amber
+    1: (40, 90, 235),    # fire  — red/orange
 }
 
 
@@ -172,7 +172,45 @@ def sidebar(models: dict[str, Path]):
     return selected, selected_b, conf, iou
 
 
-def render_result(image_bgr, detections, latency_ms, model_label, model_size_mb):
+def render_side_by_side(image_bgr, detections, latency_ms, model_label, model_size_mb):
+    """Two-column layout: original (left) vs annotated (right) plus metrics + table below."""
+    annotated = draw_detections(image_bgr, detections)
+
+    col_left, col_right = st.columns(2)
+    with col_left:
+        st.image(
+            cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB),
+            caption="Original (input)",
+            use_container_width=True,
+        )
+    with col_right:
+        st.image(
+            cv2.cvtColor(annotated, cv2.COLOR_BGR2RGB),
+            caption=f"{model_label} — {len(detections)} detection(s)",
+            use_container_width=True,
+        )
+
+    cols = st.columns(4)
+    cols[0].metric("Detections", len(detections))
+    cols[1].metric("Latency", f"{latency_ms:.1f} ms")
+    cols[2].metric("FPS", f"{1000.0 / max(latency_ms, 0.01):.1f}")
+    cols[3].metric("Model size", f"{model_size_mb:.1f} MB")
+
+    if detections:
+        rows = [
+            {
+                "Class": d["class_name"],
+                "Confidence": f"{d['confidence']:.1%}",
+                "Box": f"({int(d['x1'])},{int(d['y1'])})–({int(d['x2'])},{int(d['y2'])})",
+            }
+            for d in sorted(detections, key=lambda d: d["confidence"], reverse=True)
+        ]
+        st.dataframe(rows, use_container_width=True, hide_index=True)
+
+
+def render_compare_column(image_bgr, detections, latency_ms, model_label, model_size_mb):
+    """Single-column layout used inside compare mode (annotated only, since
+    the original is shown once at the top in compare mode)."""
     annotated = draw_detections(image_bgr, detections)
     st.image(
         cv2.cvtColor(annotated, cv2.COLOR_BGR2RGB),
@@ -235,21 +273,27 @@ def main():
         weights_b = models[selected_b]
         size_b = weights_b.stat().st_size / (1024 * 1024)
 
+        st.markdown("**Original (input)**")
+        st.image(
+            cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB),
+            use_container_width=True,
+        )
+
         col_a, col_b = st.columns(2)
         with col_a:
             st.markdown(f"**{selected}**")
             with st.spinner("Running inference..."):
                 dets_a, ms_a = run_inference(weights_a, image_bgr, conf, iou)
-            render_result(image_bgr, dets_a, ms_a, selected, size_a)
+            render_compare_column(image_bgr, dets_a, ms_a, selected, size_a)
         with col_b:
             st.markdown(f"**{selected_b}**")
             with st.spinner("Running inference..."):
                 dets_b, ms_b = run_inference(weights_b, image_bgr, conf, iou)
-            render_result(image_bgr, dets_b, ms_b, selected_b, size_b)
+            render_compare_column(image_bgr, dets_b, ms_b, selected_b, size_b)
     else:
         with st.spinner("Running inference..."):
             dets, ms = run_inference(weights_a, image_bgr, conf, iou)
-        render_result(image_bgr, dets, ms, selected, size_a)
+        render_side_by_side(image_bgr, dets, ms, selected, size_a)
 
 
 if __name__ == "__main__":

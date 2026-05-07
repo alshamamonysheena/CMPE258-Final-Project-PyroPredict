@@ -14,8 +14,8 @@ from app.inference import Detection, InferenceResult
 # ── Colour palette ──────────────────────────────────────────────────────────
 
 CLASS_COLORS_BGR = {
-    0: (40, 90, 235),    # fire  – red-orange
-    1: (0, 155, 255),    # smoke – amber
+    0: (0, 155, 255),    # smoke – amber
+    1: (40, 90, 235),    # fire  – red-orange
 }
 DEFAULT_COLOR = (222, 175, 75)  # sky-blue fallback
 

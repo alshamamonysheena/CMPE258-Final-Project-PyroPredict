@@ -42,7 +42,7 @@ class InferenceResult:
     image_hw: tuple[int, int] = (0, 0)
 
 
-CLASS_NAMES = {0: "fire", 1: "smoke"}
+CLASS_NAMES = {0: "smoke", 1: "fire"}
 
 
 # ── Ultralytics .pt backend ────────────────────────────────────────────────

@@ -226,7 +226,7 @@ def generate_dataset_yaml(
 ) -> Path:
     """Write a YOLO-compatible dataset.yaml next to the split directories."""
     if class_names is None:
-        class_names = {0: "smoke"}
+        class_names = {0: "smoke", 1: "fire"}
 
     cfg = {
         "path": str(dest.resolve()),
