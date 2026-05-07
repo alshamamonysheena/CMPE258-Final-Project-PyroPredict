@@ -1,257 +1,255 @@
 """
-PyroPredict — Streamlit Demo Application
+PyroPredict — Streamlit demo for wildfire smoke / fire detection.
 
-Run:
+Usage:
     streamlit run app/app.py
+
+Place trained models in `models/`:
+    - models/best.pt                       (recommended: best ablation .pt)
+    - models/ablation_4_combined.onnx      (FP32 ONNX, optional)
+    - models/ablation_4_combined_int8.onnx (INT8 ONNX, optional)
 """
 
 from __future__ import annotations
 
 import sys
+import time
 from pathlib import Path
 
 import cv2
 import numpy as np
 import streamlit as st
+from PIL import Image
 
-# Ensure project root is importable
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+MODELS_DIR = PROJECT_ROOT / "models"
+
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from app.inference import load_engine, InferenceResult, CLASS_NAMES
-from app.ui_utils import draw_detections, summary_markdown, format_size
-
-# ── Page config ─────────────────────────────────────────────────────────────
-
 st.set_page_config(
-    page_title="PyroPredict",
+    page_title="PyroPredict — Wildfire Smoke Detection",
     page_icon="🔥",
     layout="wide",
-    initial_sidebar_state="expanded",
 )
 
-# ── Constants ───────────────────────────────────────────────────────────────
+CLASS_NAMES = {0: "fire", 1: "smoke"}
+CLASS_COLORS_BGR = {
+    0: (40, 90, 235),    # fire  — red/orange
+    1: (0, 155, 255),    # smoke — amber
+}
 
-MODELS_DIR = PROJECT_ROOT / "models"
-SAMPLE_DIR = PROJECT_ROOT / "data" / "samples"
 
-SUPPORTED_EXT = {".pt", ".onnx"}
+# ── Model discovery ────────────────────────────────────────────────────────
 
-
-# ── Model discovery ─────────────────────────────────────────────────────────
-
-@st.cache_data
 def discover_models() -> dict[str, Path]:
-    """Scan the models/ directory for available weight files."""
-    found: dict[str, Path] = {}
+    """Return label -> path for all .pt / .onnx files in models/."""
+    options: dict[str, Path] = {}
     if MODELS_DIR.exists():
         for p in sorted(MODELS_DIR.rglob("*")):
-            if p.suffix in SUPPORTED_EXT:
-                label = f"{p.stem} ({p.suffix.lstrip('.')})"
-                found[label] = p
-    return found
+            if p.suffix.lower() in {".pt", ".onnx"}:
+                label = f"{p.stem} ({p.suffix.lstrip('.').upper()})"
+                options[label] = p
+    return options
 
 
-@st.cache_resource
-def get_engine(path: str):
-    """Cache the loaded engine so it persists across reruns."""
-    return load_engine(path, device="cpu")
+# ── Inference engine (Ultralytics handles both .pt and .onnx) ──────────────
+
+@st.cache_resource(show_spinner=False)
+def load_model(weights: str):
+    """
+    Load an Ultralytics-compatible model. Works for both .pt and .onnx
+    because Ultralytics applies the correct postprocessing internally
+    (sigmoid, NMS, scale-back, etc.).
+    """
+    from ultralytics import YOLO
+    return YOLO(weights)
 
 
-# ── Sidebar ─────────────────────────────────────────────────────────────────
-
-def render_sidebar():
-    st.sidebar.markdown("## PyroPredict")
-    st.sidebar.markdown(
-        "Real-time wildfire smoke localisation using YOLO11 & YOLO26."
+def run_inference(weights: Path, image_bgr: np.ndarray, conf: float, iou: float):
+    """
+    Run inference using Ultralytics for both PyTorch and ONNX backends.
+    Returns (detections, latency_ms).
+    """
+    model = load_model(str(weights))
+    t0 = time.perf_counter()
+    results = model.predict(
+        source=image_bgr,
+        conf=conf,
+        iou=iou,
+        device="cpu",
+        verbose=False,
     )
-    st.sidebar.divider()
+    latency_ms = (time.perf_counter() - t0) * 1000
 
-    # Model selection
-    models = discover_models()
-    if not models:
-        st.sidebar.warning(
-            "No models found in `models/` directory.  \n"
-            "Place `.pt` or `.onnx` weight files there, or use the "
-            "demo mode below with a pre-trained YOLO model."
+    detections = []
+    if results and results[0].boxes is not None:
+        boxes = results[0].boxes
+        for i in range(len(boxes)):
+            xyxy = boxes.xyxy[i].cpu().numpy() if hasattr(boxes.xyxy[i], "cpu") else np.asarray(boxes.xyxy[i])
+            conf_t = boxes.conf[i]
+            cls_t = boxes.cls[i]
+            conf_v = float(conf_t.cpu()) if hasattr(conf_t, "cpu") else float(conf_t)
+            cls_id = int(cls_t.cpu()) if hasattr(cls_t, "cpu") else int(cls_t)
+            detections.append({
+                "x1": float(xyxy[0]),
+                "y1": float(xyxy[1]),
+                "x2": float(xyxy[2]),
+                "y2": float(xyxy[3]),
+                "confidence": conf_v,
+                "class_id": cls_id,
+                "class_name": CLASS_NAMES.get(cls_id, str(cls_id)),
+            })
+    return detections, latency_ms
+
+
+# ── Drawing ────────────────────────────────────────────────────────────────
+
+def draw_detections(image_bgr: np.ndarray, detections, line_width: int = 3):
+    canvas = image_bgr.copy()
+    for det in detections:
+        color = CLASS_COLORS_BGR.get(det["class_id"], (200, 200, 200))
+        pt1 = (int(det["x1"]), int(det["y1"]))
+        pt2 = (int(det["x2"]), int(det["y2"]))
+        cv2.rectangle(canvas, pt1, pt2, color, line_width)
+
+        label = f"{det['class_name']} {det['confidence']:.0%}"
+        (tw, th), baseline = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.7, 2)
+        cv2.rectangle(
+            canvas,
+            (pt1[0], pt1[1] - th - baseline - 6),
+            (pt1[0] + tw + 6, pt1[1]),
+            color, -1,
         )
-        use_pretrained = st.sidebar.checkbox(
-            "Use pre-trained YOLO11n (demo mode)", value=True
+        cv2.putText(
+            canvas, label,
+            (pt1[0] + 3, pt1[1] - baseline - 3),
+            cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2, cv2.LINE_AA,
         )
-        if use_pretrained:
-            models = {"yolo11n (demo)": "yolo11n.pt"}
-    else:
-        use_pretrained = False
-
-    if not models:
-        st.sidebar.error("No model available. Add weights to `models/`.")
-        st.stop()
-
-    model_labels = list(models.keys())
-
-    # Side-by-side comparison toggle
-    compare_mode = st.sidebar.checkbox(
-        "Compare two models side-by-side", value=False
-    )
-
-    if compare_mode:
-        if len(model_labels) < 2:
-            st.sidebar.info("Need at least 2 models for comparison.")
-            compare_mode = False
-
-    if compare_mode:
-        col_a, col_b = st.sidebar.columns(2)
-        with col_a:
-            sel_a = st.selectbox("Model A", model_labels, index=0, key="sel_a")
-        with col_b:
-            default_b = min(1, len(model_labels) - 1)
-            sel_b = st.selectbox("Model B", model_labels, index=default_b, key="sel_b")
-        selected = [sel_a, sel_b]
-    else:
-        sel = st.sidebar.selectbox("Model", model_labels, index=0)
-        selected = [sel]
-
-    st.sidebar.divider()
-
-    # Inference settings
-    conf = st.sidebar.slider(
-        "Confidence threshold", 0.05, 0.95, 0.25, 0.05
-    )
-    iou = st.sidebar.slider(
-        "IoU threshold (NMS)", 0.1, 0.9, 0.45, 0.05
-    )
-
-    st.sidebar.divider()
-    st.sidebar.markdown(
-        "**CMPE 258** · Spring 2026 · SJSU  \n"
-        "Alshama Mony Sheena · Gautam Santhanu Thampy"
-    )
-
-    return models, selected, conf, iou, compare_mode
+    return canvas
 
 
-# ── Main content ────────────────────────────────────────────────────────────
+# ── UI ─────────────────────────────────────────────────────────────────────
 
-def render_main(models, selected, conf, iou, compare_mode):
+def header():
     st.markdown(
-        "<h1 style='text-align:center;'>PyroPredict</h1>"
-        "<p style='text-align:center; color:gray;'>"
-        "Wildfire Smoke & Fire Detection Dashboard</p>",
+        "<h1 style='margin-bottom:0;'>🔥 PyroPredict</h1>"
+        "<p style='color:gray; margin-top:4px;'>Wildfire smoke & fire detection — CMPE 258, SJSU</p>",
         unsafe_allow_html=True,
     )
+    st.divider()
 
-    # Image input
-    tab_upload, tab_sample = st.tabs(["📤 Upload image", "📁 Sample images"])
 
-    with tab_upload:
-        uploaded = st.file_uploader(
-            "Upload an image (JPG / PNG)",
-            type=["jpg", "jpeg", "png", "bmp", "webp"],
+def sidebar(models: dict[str, Path]):
+    st.sidebar.header("Configuration")
+
+    if not models:
+        st.sidebar.error(
+            "No models found in `models/`.\n\n"
+            "Drop a `.pt` or `.onnx` file there and reload."
         )
+        st.stop()
 
-    with tab_sample:
-        sample_files = []
-        if SAMPLE_DIR.exists():
-            sample_files = sorted(
-                p for p in SAMPLE_DIR.iterdir()
-                if p.suffix.lower() in {".jpg", ".jpeg", ".png"}
-            )
-        if sample_files:
-            sample_names = [p.name for p in sample_files]
-            chosen = st.selectbox("Choose a sample", sample_names)
-            sample_path = SAMPLE_DIR / chosen
-        else:
-            st.info(
-                "No sample images found. Place test images in "
-                "`data/samples/` for quick testing."
-            )
-            sample_path = None
+    labels = list(models.keys())
+    selected = st.sidebar.selectbox("Model", labels, index=0)
 
-    # Determine which image to use
-    image_bgr = None
-    if uploaded is not None:
-        file_bytes = np.frombuffer(uploaded.read(), dtype=np.uint8)
-        image_bgr = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
-    elif sample_path is not None and sample_path.exists():
-        image_bgr = cv2.imread(str(sample_path))
+    compare_mode = st.sidebar.toggle("Compare two models side-by-side", value=False)
+    selected_b = None
+    if compare_mode and len(labels) >= 2:
+        default_b = 1 if labels[1] != selected else min(2, len(labels) - 1)
+        selected_b = st.sidebar.selectbox("Second model", labels, index=default_b, key="second_model")
 
-    if image_bgr is None:
-        st.info("👆 Upload an image or select a sample to get started.")
-        return
+    st.sidebar.divider()
+    conf = st.sidebar.slider("Confidence threshold", 0.05, 0.95, 0.30, 0.05)
+    iou = st.sidebar.slider("IoU threshold (NMS)", 0.10, 0.90, 0.45, 0.05)
 
-    # Run inference
-    if compare_mode and len(selected) == 2:
-        _render_comparison(image_bgr, models, selected, conf, iou)
-    else:
-        _render_single(image_bgr, models, selected[0], conf, iou)
-
-
-def _render_single(image_bgr, models, model_key, conf, iou):
-    """Run one model and display results."""
-    engine = get_engine(str(models[model_key]))
-    result = engine.predict(image_bgr, conf=conf, iou=iou)
-    annotated = draw_detections(image_bgr, result)
-
-    col_img, col_info = st.columns([3, 1])
-    with col_img:
-        st.image(
-            cv2.cvtColor(annotated, cv2.COLOR_BGR2RGB),
-            caption=f"{model_key} — {len(result.detections)} detections",
-            use_container_width=True,
-        )
-    with col_info:
-        st.markdown("### Results")
-        st.markdown(summary_markdown(result, engine.size_mb))
-        _render_detection_table(result)
-
-
-def _render_comparison(image_bgr, models, selected, conf, iou):
-    """Run two models side-by-side."""
-    col_a, col_b = st.columns(2)
-
-    for col, key in [(col_a, selected[0]), (col_b, selected[1])]:
-        engine = get_engine(str(models[key]))
-        result = engine.predict(image_bgr, conf=conf, iou=iou)
-        annotated = draw_detections(image_bgr, result)
-
-        with col:
-            st.markdown(f"#### {key}")
-            st.image(
-                cv2.cvtColor(annotated, cv2.COLOR_BGR2RGB),
-                use_container_width=True,
-            )
-            st.markdown(summary_markdown(result, engine.size_mb))
-            _render_detection_table(result)
-
-
-def _render_detection_table(result: InferenceResult):
-    """Show a compact table of individual detections."""
-    if not result.detections:
-        st.caption("No detections above threshold.")
-        return
-    import pandas as pd
-    rows = [
-        {
-            "Class": d.class_name,
-            "Confidence": f"{d.confidence:.1%}",
-            "Box": f"({int(d.x1)},{int(d.y1)})–({int(d.x2)},{int(d.y2)})",
-        }
-        for d in sorted(result.detections, key=lambda d: d.confidence, reverse=True)
-    ]
-    st.dataframe(
-        pd.DataFrame(rows),
-        use_container_width=True,
-        hide_index=True,
-        height=min(35 * len(rows) + 38, 300),
+    st.sidebar.divider()
+    st.sidebar.caption(
+        "**Team:** Alshama Mony Sheena · Gautam Santhanu Thampy  \n"
+        "Spring 2026"
     )
 
+    return selected, selected_b, conf, iou
 
-# ── Entrypoint ──────────────────────────────────────────────────────────────
+
+def render_result(image_bgr, detections, latency_ms, model_label, model_size_mb):
+    annotated = draw_detections(image_bgr, detections)
+    st.image(
+        cv2.cvtColor(annotated, cv2.COLOR_BGR2RGB),
+        caption=f"{model_label} — {len(detections)} detection(s)",
+        use_container_width=True,
+    )
+
+    cols = st.columns(4)
+    cols[0].metric("Detections", len(detections))
+    cols[1].metric("Latency", f"{latency_ms:.1f} ms")
+    cols[2].metric("FPS", f"{1000.0 / max(latency_ms, 0.01):.1f}")
+    cols[3].metric("Model size", f"{model_size_mb:.1f} MB")
+
+    if detections:
+        rows = [
+            {
+                "Class": d["class_name"],
+                "Confidence": f"{d['confidence']:.1%}",
+                "Box": f"({int(d['x1'])},{int(d['y1'])})–({int(d['x2'])},{int(d['y2'])})",
+            }
+            for d in sorted(detections, key=lambda d: d["confidence"], reverse=True)
+        ]
+        st.dataframe(rows, use_container_width=True, hide_index=True)
+
 
 def main():
-    models, selected, conf, iou, compare_mode = render_sidebar()
-    render_main(models, selected, conf, iou, compare_mode)
+    header()
+
+    models = discover_models()
+    selected, selected_b, conf, iou = sidebar(models)
+
+    st.subheader("1. Provide an image")
+    src = st.radio("Source", ["Upload", "Sample"], horizontal=True, label_visibility="collapsed")
+
+    image_bgr = None
+    if src == "Upload":
+        uploaded = st.file_uploader("Upload an image", type=["jpg", "jpeg", "png", "bmp", "webp"])
+        if uploaded:
+            image = Image.open(uploaded).convert("RGB")
+            image_bgr = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
+    else:
+        sample_dir = PROJECT_ROOT / "data" / "samples"
+        sample_dir.mkdir(parents=True, exist_ok=True)
+        sample_files = sorted(p for p in sample_dir.iterdir() if p.suffix.lower() in {".jpg", ".jpeg", ".png"})
+        if sample_files:
+            choice = st.selectbox("Sample image", [p.name for p in sample_files])
+            image_bgr = cv2.imread(str(sample_dir / choice))
+        else:
+            st.info("Place sample images in `data/samples/` to use this option.")
+
+    if image_bgr is None:
+        st.info("Upload or select an image to begin.")
+        return
+
+    st.subheader("2. Detection")
+    weights_a = models[selected]
+    size_a = weights_a.stat().st_size / (1024 * 1024)
+
+    if selected_b and selected_b != selected:
+        weights_b = models[selected_b]
+        size_b = weights_b.stat().st_size / (1024 * 1024)
+
+        col_a, col_b = st.columns(2)
+        with col_a:
+            st.markdown(f"**{selected}**")
+            with st.spinner("Running inference..."):
+                dets_a, ms_a = run_inference(weights_a, image_bgr, conf, iou)
+            render_result(image_bgr, dets_a, ms_a, selected, size_a)
+        with col_b:
+            st.markdown(f"**{selected_b}**")
+            with st.spinner("Running inference..."):
+                dets_b, ms_b = run_inference(weights_b, image_bgr, conf, iou)
+            render_result(image_bgr, dets_b, ms_b, selected_b, size_b)
+    else:
+        with st.spinner("Running inference..."):
+            dets, ms = run_inference(weights_a, image_bgr, conf, iou)
+        render_result(image_bgr, dets, ms, selected, size_a)
 
 
 if __name__ == "__main__":

@@ -76,8 +76,12 @@ bounding-box visualisation, and live inference metrics. Dockerised for reproduci
 │   ├── 02_train_baselines.ipynb  YOLO11/26 baseline training (Colab, GPU)
 │   ├── 03_ablations.ipynb        Augmentation ablation experiments (upcoming)
 │   └── 04_quantize.ipynb         ONNX export & INT8 benchmarking (upcoming)
-├── app/                Streamlit demo (upcoming)
-├── docker/             Dockerfile & compose (upcoming)
+├── app/                Streamlit demo
+├── results/            Final metrics, charts, and per-phase READMEs
+│   ├── eda/            Phase 2 — dataset analysis charts
+│   ├── baselines/      Phase 3 — YOLO11m vs YOLO26m
+│   ├── ablations/      Phase 4 — training-strategy ablations
+│   └── quantization/   Phase 5 — FP32 vs INT8 benchmark
 ├── data/               Downloaded & processed data (git-ignored)
 ├── models/             Saved weights & ONNX files (git-ignored)
 ├── requirements.txt    Pinned Python dependencies
@@ -91,20 +95,33 @@ bounding-box visualisation, and live inference metrics. Dockerised for reproduci
 - [x] Data pipeline: multi-source download script (Roboflow, FIgLib/HPWREN, local)
 - [x] Annotation conversion (VOC XML → YOLO format) with validation
 - [x] Event-aware dataset splitting (prevents data leakage across fire events)
-- [x] EDA notebook: dataset statistics, sample visualisation, class/box distributions
-- [x] Successfully ran EDA on D-Fire (14,122 train / 3,099 val / 4,306 test images)
-- [x] Baseline training notebook for YOLO11m and YOLO26m (ready to execute)
-
-### In Progress
-- [ ] Train YOLO11m and YOLO26m baselines on D-Fire (Colab GPU)
-- [ ] Baseline evaluation on test set (mAP, precision, recall, F1)
+- [x] EDA on D-Fire (14,122 train / 3,099 val / 4,306 test images)
+- [x] Phase 3 — YOLO11m and YOLO26m baseline training and evaluation
+- [x] Phase 4 — 4 ablation experiments (best: multi-scale + longer schedule, +1.0 mAP@50)
+- [x] Phase 5 — ONNX export, INT8 dynamic quantisation, FP32 vs INT8 benchmark
+- [x] Phase 6 — Streamlit demo with FP32 / INT8 toggle and live performance metrics
 
 ### Next Steps
-- [ ] Phase 4: Augmentation ablation experiments (domain augmentations, hard negatives, training recipe)
-- [ ] Phase 5: ONNX export + INT8 quantisation + efficiency benchmarking
-- [ ] Phase 6: Streamlit demo application with model comparison toggle
 - [ ] Phase 7: Dockerised deployment artifact
 - [ ] Final report and presentation
+
+## Results
+
+All evaluation artifacts (CSVs, plots, training curves) are organised in
+[`results/`](results/) by phase. Quick links:
+
+- [results/eda/](results/eda/) — dataset analysis
+- [results/baselines/](results/baselines/) — YOLO11m vs YOLO26m
+- [results/ablations/](results/ablations/) — 4 training-strategy experiments
+- [results/quantization/](results/quantization/) — FP32 vs INT8 efficiency
+
+### Top-line numbers
+
+| Phase | Best model | mAP@50 | Notes |
+|---|---|---|---|
+| Baseline | YOLO26m | 0.7760 | Stronger of the two SOTA baselines |
+| Ablation | YOLO26m + multi-scale | **0.7861** | +1.0 mAP@50 over baseline |
+| Quantised | INT8 ONNX | 0.7336 | 74% smaller (77.9 → 19.95 MB) |
 
 ## How to Run
 
